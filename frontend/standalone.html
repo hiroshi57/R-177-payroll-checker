@@ -638,6 +638,45 @@ function bizDaysBetween(a, b) {
   return c;
 }
 
+// 都道府県の一覧（金額は利用者が入力する。初期値は空＝未設定）
+var PREFS = ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"];
+var MW_SOURCE = "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/koyou_roudou/roudoukijun/minimumichiran/";
+// 保存形式: {pref:"東京都", wage:1163, effective:"2026/10/01", checked:"2026/08/21"}
+function mwStatus(rec, today) {
+  if (!rec || !rec.wage) return {
+    st: "未設定",
+    col: "#c0392b",
+    msg: "最低賃金が設定されていません。厚生労働省のページで確認して入力してください。"
+  };
+  var eff = parseDate(rec.effective);
+  var chk = parseDate(rec.checked);
+  // 改定は例年10月ごろ。前回確認から1年近く経っていたら警告する
+  if (chk) {
+    var days = daysBetween(chk, today);
+    if (days >= 330) return {
+      st: "要確認（" + Math.floor(days / 30) + "か月前に確認）",
+      col: "#c0392b",
+      msg: "最終確認から" + days + "日経過しています。最低賃金は毎年10月ごろ改定されます。必ず最新額をご確認ください。"
+    };
+    if (days >= 270) return {
+      st: "そろそろ改定時期",
+      col: "#e07b39",
+      msg: "最終確認から" + days + "日経過しています。10月の改定が近い可能性があります。"
+    };
+  }
+  // 発効日が未来なら、まだ適用前
+  if (eff && eff > today) return {
+    st: "適用前（" + fmtDate(eff) + "から）",
+    col: "#f0a500",
+    msg: "入力された金額は " + fmtDate(eff) + " から適用されます。現在は改定前の額で判定してください。"
+  };
+  return {
+    st: "設定済み",
+    col: "#17a673",
+    msg: (eff ? fmtDate(eff) + "発効" : "発効日未入力") + " ／ " + (chk ? fmtDate(chk) + "に確認" : "確認日未入力")
+  };
+}
+
 // 給与計算の検算（支給と控除の整合、前月比の異常、最低賃金、割増賃金）
 const P0 = [{
   name: "田中 太郎",
@@ -730,7 +769,8 @@ function check(rows, minWage) {
     });
     // 時間単価と最低賃金
     var hours = Number(r.hours) || 0;
-    if (hours > 0) {
+    if (hours > 0 && minWage > 0) {
+      // 最低賃金が未設定のときは判定しない
       var hourly = Math.floor((Number(r.base) || 0) / hours);
       if (hourly < minWage) issues.push({
         t: "時間あたりの基本給が最低賃金を下回ります",
@@ -790,7 +830,16 @@ const RN = {
 };
 function App() {
   const [rows, setRows] = usePersist("rows", P0);
-  const [minWage, setMinWage] = usePersist("minWage", 1163);
+  const [mw, setMw] = usePersist("mw", {
+    pref: "",
+    wage: 0,
+    effective: "",
+    checked: ""
+  });
+  const today2 = new Date();
+  today2.setHours(0, 0, 0, 0);
+  const mwSt = mwStatus(mw, today2);
+  const minWage = Number(mw.wage) || 0;
   const list = check(rows, Number(minWage) || 0);
   const bad = list.filter(function (r) {
     return r.maxRisk === 3;
@@ -856,26 +905,135 @@ function App() {
     className: "guide"
   }, "\uD83D\uDC47 ", /*#__PURE__*/React.createElement("b", null, "\u3053\u3053\u3092\u89E6\u3063\u3066\u304F\u3060\u3055\u3044\u3002"), "\u7D66\u4E0E\u8A08\u7B97\u30BD\u30D5\u30C8\u306E\u51FA\u529B\u3092\u898B\u306A\u304C\u3089\u5165\u529B\u3057\u307E\u3059\u3002", /*#__PURE__*/React.createElement("br", null), "\u30FB", /*#__PURE__*/React.createElement("b", null, "\u5DEE\u5F15\u652F\u7D66\u984D"), "\u2026\u30BD\u30D5\u30C8\u304C\u51FA\u3057\u305F\u300C\u624B\u53D6\u308A\u300D\u306E\u91D1\u984D\u3092\u305D\u306E\u307E\u307E\u5165\u308C\u3066\u304F\u3060\u3055\u3044\uFF08\u3053\u306E\u5024\u304C\u5408\u3063\u3066\u3044\u308B\u304B\u3092\u691C\u7B97\u3057\u307E\u3059\uFF09", /*#__PURE__*/React.createElement("br", null), "\u30FB", /*#__PURE__*/React.createElement("b", null, "\u6240\u5B9A\u6642\u9593\u30FB\u6B8B\u696D\u6642\u9593"), "\u2026\u6700\u4F4E\u8CC3\u91D1\u3068\u6B8B\u696D\u4EE3\u306E\u78BA\u8A8D\u306B\u4F7F\u3044\u307E\u3059", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("b", null, "\u7D66\u4E0E\u60C5\u5831\u306F\u5916\u90E8\u306B\u9001\u4FE1\u3055\u308C\u307E\u305B\u3093\u3002")), /*#__PURE__*/React.createElement("div", {
     style: {
-      margin: "12px 0",
+      background: mwSt.col === "#17a673" ? "#e7f7ef" : "#fff8e6",
+      border: "2px solid " + mwSt.col,
+      borderRadius: 10,
+      padding: "12px 14px",
+      margin: "12px 0"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: "bold",
+      fontSize: 14.5,
+      color: mwSt.col,
+      marginBottom: 6
+    }
+  }, "\u6700\u4F4E\u8CC3\u91D1\u306E\u8A2D\u5B9A\uFF1A", mwSt.st), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#556",
+      lineHeight: 1.8,
+      marginBottom: 8
+    }
+  }, mwSt.msg), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap",
+      alignItems: "center",
       fontSize: 14
     }
-  }, "\u6700\u4F4E\u8CC3\u91D1 ", /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    value: minWage,
+  }, /*#__PURE__*/React.createElement("span", null, "\u90FD\u9053\u5E9C\u770C", /*#__PURE__*/React.createElement("select", {
+    value: mw.pref,
     onChange: function (e) {
-      setMinWage(Number(e.target.value) || 0);
+      setMw(Object.assign({}, mw, {
+        pref: e.target.value
+      }));
     },
     style: {
-      width: 90,
+      fontSize: 14,
+      padding: "6px 8px",
+      border: "1.5px solid #b9cbe4",
+      borderRadius: 6,
+      marginLeft: 5
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u9078\u3093\u3067\u304F\u3060\u3055\u3044"), PREFS.map(function (p) {
+    return /*#__PURE__*/React.createElement("option", {
+      key: p
+    }, p);
+  }))), /*#__PURE__*/React.createElement("span", null, "\u6642\u9593\u984D", /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: mw.wage,
+    onChange: function (e) {
+      setMw(Object.assign({}, mw, {
+        wage: Number(e.target.value) || 0
+      }));
+    },
+    style: {
+      width: 84,
       border: "1.5px solid #b9cbe4",
       borderRadius: 6,
       padding: "6px",
       textAlign: "right",
-      fontSize: 14
+      fontSize: 14,
+      marginLeft: 5
     }
-  }), " \u5186/\u6642", /*#__PURE__*/React.createElement("span", {
-    className: "sub"
-  }, "\uFF08\u304A\u4F4F\u307E\u3044\u306E\u90FD\u9053\u5E9C\u770C\u306E\u984D\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044\u3002\u6BCE\u5E7410\u6708\u3054\u308D\u6539\u5B9A\u3055\u308C\u307E\u3059\uFF09")), /*#__PURE__*/React.createElement("table", {
+  }), " \u5186"), /*#__PURE__*/React.createElement("span", null, "\u767A\u52B9\u65E5", /*#__PURE__*/React.createElement("input", {
+    value: mw.effective,
+    placeholder: "2026/10/01",
+    onChange: function (e) {
+      setMw(Object.assign({}, mw, {
+        effective: e.target.value
+      }));
+    },
+    style: {
+      width: 100,
+      border: "1.5px solid #b9cbe4",
+      borderRadius: 6,
+      padding: "6px",
+      fontSize: 14,
+      marginLeft: 5
+    }
+  })), /*#__PURE__*/React.createElement("span", null, "\u78BA\u8A8D\u65E5", /*#__PURE__*/React.createElement("input", {
+    value: mw.checked,
+    placeholder: "2026/08/21",
+    onChange: function (e) {
+      setMw(Object.assign({}, mw, {
+        checked: e.target.value
+      }));
+    },
+    style: {
+      width: 100,
+      border: "1.5px solid #b9cbe4",
+      borderRadius: 6,
+      padding: "6px",
+      fontSize: 14,
+      marginLeft: 5
+    }
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "noprint",
+    onClick: function () {
+      var t = new Date();
+      setMw(Object.assign({}, mw, {
+        checked: t.getFullYear() + "/" + (t.getMonth() + 1) + "/" + t.getDate()
+      }));
+    },
+    style: {
+      border: 0,
+      borderRadius: 7,
+      background: "#2b6cb0",
+      color: "#fff",
+      padding: "7px 12px",
+      cursor: "pointer",
+      fontSize: 12.5
+    }
+  }, "\u4ECA\u65E5\u78BA\u8A8D\u3057\u305F"), /*#__PURE__*/React.createElement("a", {
+    className: "noprint",
+    href: MW_SOURCE,
+    target: "_blank",
+    rel: "noopener",
+    style: {
+      color: "#2b6cb0",
+      fontSize: 12.5
+    }
+  }, "\u539A\u751F\u52B4\u50CD\u7701\u306E\u4E00\u89A7\u3092\u958B\u304F \u2192")), /*#__PURE__*/React.createElement("div", {
+    className: "sub",
+    style: {
+      marginTop: 7
+    }
+  }, "\u203B\u6700\u4F4E\u8CC3\u91D1\u306F", /*#__PURE__*/React.createElement("b", null, "\u90FD\u9053\u5E9C\u770C\u3054\u3068\u306B\u7570\u306A\u308A\u3001\u6BCE\u5E7410\u6708\u3054\u308D\u6539\u5B9A"), "\u3055\u308C\u307E\u3059\u3002\u5F53\u30C4\u30FC\u30EB\u306F\u91D1\u984D\u3092\u5185\u8535\u3057\u3066\u3044\u307E\u305B\u3093\u3002 \u5FC5\u305A\u4E0A\u306E\u30EA\u30F3\u30AF\u304B\u3089", /*#__PURE__*/React.createElement("b", null, "\u6700\u65B0\u306E\u984D\u3092\u3054\u81EA\u8EAB\u3067\u78BA\u8A8D\u3057\u3066\u5165\u529B"), "\u3057\u3066\u304F\u3060\u3055\u3044\u3002\u7279\u5B9A\u306E\u7523\u696D\u306B\u306F\u5225\u9014\u300C\u7279\u5B9A\u6700\u4F4E\u8CC3\u91D1\u300D\u304C\u5B9A\u3081\u3089\u308C\u3066\u3044\u308B\u5834\u5408\u304C\u3042\u308A\u307E\u3059\u3002")), /*#__PURE__*/React.createElement("table", {
     style: {
       marginTop: 8
     }
